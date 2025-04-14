@@ -1,146 +1,113 @@
-"use client";
+'use client'
+import { useState, useRef, useEffect } from 'react';
+import { FileUpload } from '../components/FileUpload';
+import { Button } from '../components/Button';
+import { LogDisplay } from '../components/LogDisplay';
+import { Toast, ToastContainer } from '../components/Toast';
 
-import { useState } from "react";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Progress } from "@/components/ui/progress";
-import { useToast } from "@/hooks/use-toast";
-import Image from "next/image";
+interface Log {
+  id: string;
+  timestamp: string;
+  message: string;
+  type: 'info' | 'success' | 'error' | 'warning';
+}
 
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
-  const [attachments, setAttachments] = useState<File[]>([]);
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [isSending, setIsSending] = useState(false);
-  const { toast } = useToast();
+  const [logs, setLogs] = useState<Log[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | null }>({
+    message: '',
+    type: null,
+  });
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0] || null;
+  // Add a log entry
+  const addLog = (message: string, type: 'info' | 'success' | 'error' | 'warning' = 'info') => {
+    const newLog: Log = {
+      id: Date.now().toString(),
+      timestamp: new Date().toLocaleTimeString(),
+      message,
+      type,
+    };
+    setLogs((prevLogs) => [newLog, ...prevLogs]);
+  };
 
-    if (selectedFile && !selectedFile.name.endsWith('.csv')) {
-      toast({
-        title: "Invalid file type",
-        description: "Please upload a CSV file",
-        variant: "destructive",
-      });
+  // Handle file selection
+  const handleFileSelected = (selectedFile: File) => {
+    if (!selectedFile.name.endsWith('.csv')) {
+      setToast({ message: 'Please upload a CSV file', type: 'error' });
       return;
     }
-
     setFile(selectedFile);
+    addLog(`File selected: ${selectedFile.name}`, 'info');
   };
 
-  const handleAttachmentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = e.target.files;
-
-    if (!selectedFiles || selectedFiles.length === 0) return;
-
-    // Convert FileList to array and check total size
-    const newAttachments = Array.from(selectedFiles);
-    const totalSize = [...attachments, ...newAttachments].reduce((acc, file) => acc + file.size, 0);
-
-    // Limit total attachment size to 20MB (WhatsApp's approximate limit)
-    if (totalSize > 20 * 1024 * 1024) {
-      toast({
-        title: "Attachments too large",
-        description: "Total attachment size cannot exceed 20MB",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setAttachments(prev => [...prev, ...newAttachments]);
-
-    toast({
-      title: "Attachments added",
-      description: `Added ${newAttachments.length} attachment(s)`,
-    });
-  };
-
-  const removeAttachment = (index: number) => {
-    setAttachments(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const handleUpload = () => {
+  // Send messages
+  const handleSendMessages = async () => {
     if (!file) {
-      toast({
-        title: "No file selected",
-        description: "Please select a CSV file first",
-        variant: "destructive",
-      });
+      setToast({ message: 'Please select a CSV file first', type: 'error' });
       return;
     }
 
-    // Simulate upload progress
-    setUploading(true);
-    setUploadProgress(0);
+    setIsLoading(true);
+    addLog('Uploading file and starting campaign...', 'info');
 
-    const interval = setInterval(() => {
-      setUploadProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setUploading(false);
-          toast({
-            title: "File processed",
-            description: "Your CSV file has been processed successfully",
-          });
-          return 100;
-        }
-        return prev + 10;
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('http://localhost:8000/upload-csv', {
+        method: 'POST',
+        body: formData,
       });
-    }, 300);
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || 'Error sending messages');
+      }
+
+      addLog(`Campaign started: ${data.message}`, 'success');
+      setToast({ message: 'Campaign started successfully', type: 'success' });
+      
+      // Poll for results
+      startPollingResults();
+    } catch (error) {
+      console.error('Error:', error);
+      addLog(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
+      setToast({ message: 'Failed to start campaign', type: 'error' });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleSendMessages = () => {
-    if (!file) {
-      toast({
-        title: "No file processed",
-        description: "Please upload and process a CSV file first",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Simulate sending messages
-    setIsSending(true);
-
+  // Poll for campaign results
+  const startPollingResults = () => {
+    // In a real implementation, you would poll the backend for results
+    // For now, we'll simulate this with a timeout
+    addLog('Checking campaign status...', 'info');
+    
     setTimeout(() => {
-      setIsSending(false);
-      toast({
-        title: "Messages queued",
-        description: `${attachments.length > 0 ? 'Messages with attachments' : 'Messages'} have been queued for sending`,
-      });
-    }, 2000);
+      addLog('Messages are being processed in the background', 'info');
+    }, 3000);
   };
 
-  // Helper function to get file type icon
-  const getFileIcon = (fileName: string) => {
-    const extension = fileName.split('.').pop()?.toLowerCase();
-
-    if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension || '')) {
-      return '🖼️';
-    } else if (['pdf'].includes(extension || '')) {
-      return '📄';
-    } else if (['doc', 'docx'].includes(extension || '')) {
-      return '📝';
-    } else if (['xls', 'xlsx', 'csv'].includes(extension || '')) {
-      return '📊';
-    } else if (['mp4', 'mov', 'avi'].includes(extension || '')) {
-      return '🎬';
-    } else if (['mp3', 'wav', 'ogg'].includes(extension || '')) {
-      return '🔊';
-    } else {
-      return '📎';
+  // Clear toast after 3 seconds
+  useEffect(() => {
+    if (toast.type) {
+      const timer = setTimeout(() => {
+        setToast({ message: '', type: null });
+      }, 3000);
+      return () => clearTimeout(timer);
     }
-  };
+  }, [toast]);
 
   return (
-    <div className="container mx-auto py-12 px-4">
-      <div className="max-w-4xl mx-auto">
-        <div className="mb-8 text-center">
-          <div className="flex justify-center items-center mb-4">
-            <div className="bg-green-500 rounded-full p-3 mr-2">
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-white shadow">
+        <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8 flex items-center">
+          <div className="flex items-center mr-4">
+            <div className="bg-green-500 rounded-full p-2">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 viewBox="0 0 24 24"
@@ -149,171 +116,108 @@ export default function Home() {
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                className="w-8 h-8 text-white"
+                className="w-6 h-6 text-white"
               >
                 <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
-                <path d="M14.5 6.5 18 10l-4 4-4-4 3.5-3.5Z" />
               </svg>
             </div>
-            <span className="text-3xl font-bold tracking-tight">Scalixity</span>
           </div>
-          <h1 className="text-3xl font-bold tracking-tight">WhatsApp Automation</h1>
-          <p className="text-muted-foreground mt-2">
-            Upload your CSV file and send automated WhatsApp messages with attachments
-          </p>
+          <h1 className="text-2xl font-bold text-gray-900">Scalixity WhatsApp Automation</h1>
         </div>
+      </header>
 
-        <Card className="mb-8 shadow-md">
-          <CardHeader className="bg-slate-50 border-b">
-            <CardTitle>Upload Contact List</CardTitle>
-            <CardDescription>
-              Upload a CSV file containing phone numbers and message templates
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="pt-6">
-            <div className="space-y-4">
-              <div className="grid w-full max-w-sm items-center gap-1.5">
-                <label htmlFor="csv" className="text-sm font-medium leading-none mb-2">
-                  CSV File
-                </label>
-                <Input
-                  id="csv"
-                  type="file"
-                  accept=".csv"
-                  onChange={handleFileChange}
-                  disabled={uploading}
-                  className="cursor-pointer"
-                />
-                {file && (
-                  <p className="text-sm text-muted-foreground mt-2">
-                    Selected file: {file.name} ({(file.size / 1024).toFixed(2)} KB)
-                  </p>
-                )}
-              </div>
-
-              {uploading && (
-                <div className="space-y-2 my-4">
-                  <Progress value={uploadProgress} className="w-full h-2" />
-                  <p className="text-sm text-muted-foreground">Processing file... {uploadProgress}%</p>
-                </div>
-              )}
-
-              <Button
-                onClick={handleUpload}
-                disabled={!file || uploading}
-                className="mt-2"
-              >
-                {uploading ? "Processing..." : "Process CSV"}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Attachments Card */}
-        <Card className="mb-8 shadow-md">
-          <CardHeader className="bg-slate-50 border-b">
-            <CardTitle>Add Attachments</CardTitle>
-            <CardDescription>
-              Upload files to attach to your WhatsApp messages (optional)
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="pt-6">
-            <div className="space-y-4">
-              <div className="grid w-full max-w-sm items-center gap-1.5">
-                <label htmlFor="attachments" className="text-sm font-medium leading-none mb-2">
-                  Media Files
-                </label>
-                <Input
-                  id="attachments"
-                  type="file"
-                  onChange={handleAttachmentChange}
-                  disabled={uploading || isSending}
-                  className="cursor-pointer"
-                  multiple
-                  accept="image/*,application/pdf,video/*,audio/*,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Supports images (JPEG, PNG), documents (PDF, DOC), videos, and audio files
-                </p>
-              </div>
-
-              {attachments.length > 0 && (
-                <div className="border rounded-md p-3 mt-4">
-                  <h3 className="text-sm font-medium mb-2">Uploaded Attachments</h3>
-                  <ul className="space-y-2">
-                    {attachments.map((attachment, index) => (
-                      <li key={index} className="flex items-center justify-between text-sm">
-                        <div className="flex items-center">
-                          <span className="mr-2 text-lg">{getFileIcon(attachment.name)}</span>
-                          <span className="truncate max-w-[200px]">{attachment.name}</span>
-                          <span className="text-muted-foreground ml-2">
-                            ({(attachment.size / 1024).toFixed(1)} KB)
-                          </span>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeAttachment(index)}
-                          className="h-7 px-2 text-red-500 hover:text-red-700"
+      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        <div className="px-4 py-6 sm:px-0">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="md:col-span-1">
+              <div className="bg-white shadow overflow-hidden rounded-lg">
+                <div className="px-4 py-5 sm:p-6">
+                  <h2 className="text-lg font-medium text-gray-900 mb-4">Upload CSV File</h2>
+                  <FileUpload onFileSelected={handleFileSelected} />
+                  
+                  {file && (
+                    <div className="mt-4">
+                      <p className="text-sm text-gray-600">Selected file:</p>
+                      <div className="flex items-center mt-1 p-2 bg-gray-50 rounded-md">
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-5 w-5 text-gray-400 mr-2"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
                         >
-                          Remove
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                          />
+                        </svg>
+                        <span className="text-sm font-medium">{file.name}</span>
+                        <span className="ml-2 text-xs text-gray-500">
+                          ({(file.size / 1024).toFixed(2)} KB)
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-6">
+                    <Button 
+                      onClick={handleSendMessages} 
+                      isLoading={isLoading} 
+                      disabled={!file || isLoading}
+                    >
+                      {isLoading ? 'Sending...' : 'Send WhatsApp Messages'}
+                    </Button>
+                  </div>
                 </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+              </div>
 
-        <Card className="shadow-md">
-          <CardHeader className="bg-slate-50 border-b">
-            <CardTitle>Send Messages</CardTitle>
-            <CardDescription>
-              Send WhatsApp messages with optional attachments to all contacts in your CSV
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="pt-6">
-            <div className="bg-blue-50 border border-blue-100 rounded-md p-4 mb-4">
-              <h3 className="text-sm font-medium text-blue-800 mb-1">CSV Format Information</h3>
-              <p className="text-xs text-blue-700">
-                Your CSV should include columns for: phone number, name, and message template.
-                Example: +1234567890, John Doe, "Hello {name}, your appointment is confirmed."
-              </p>
-            </div>
-
-            <div className="space-y-2 mb-4">
-              <p>
-                {file
-                  ? `Ready to send messages to contacts from ${file.name}`
-                  : "Upload a CSV file to begin sending messages"}
-              </p>
-
-              {attachments.length > 0 && (
-                <p className="text-sm text-green-600">
-                  {attachments.length} attachment(s) will be sent with each message
-                </p>
-              )}
+              <div className="bg-white shadow overflow-hidden rounded-lg mt-6">
+                <div className="px-4 py-5 sm:p-6">
+                  <h2 className="text-lg font-medium text-gray-900 mb-4">CSV Format Requirements</h2>
+                  <div className="text-sm text-gray-600 space-y-2">
+                    <p>Your CSV file should include the following columns:</p>
+                    <ul className="list-disc pl-5 space-y-1">
+                      <li>Mobile (phone number with country code)</li>
+                      <li>Name of the Exhibitor (company name)</li>
+                      <li>Profile (company description)</li>
+                      <li>Sector (industry or sector)</li>
+                    </ul>
+                    <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mt-4">
+                      <div className="flex">
+                        <div className="flex-shrink-0">
+                          <svg className="h-5 w-5 text-yellow-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                          </svg>
+                        </div>
+                        <div className="ml-3">
+                          <p className="text-sm text-yellow-700">
+                            Make sure phone numbers include the country code (e.g., +1234567890)
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <div className="bg-yellow-50 border border-yellow-100 rounded-md p-3 text-xs text-yellow-700">
-              <p className="font-medium">Note:</p>
-              <p>WhatsApp has limits on attachment sizes and types. Large files or too many attachments may not send properly.</p>
+            <div className="md:col-span-2">
+              <div className="bg-white shadow rounded-lg h-full">
+                <div className="border-b border-gray-200 px-4 py-4 sm:px-6">
+                  <h2 className="text-lg font-medium text-gray-900">Activity Logs</h2>
+                </div>
+                <LogDisplay logs={logs} />
+              </div>
             </div>
-          </CardContent>
-          <CardFooter className="bg-slate-50 border-t">
-            <Button
-              onClick={handleSendMessages}
-              disabled={!file || isSending || uploading}
-              className="w-full"
-              size="lg"
-            >
-              {isSending ? "Sending..." : "Send WhatsApp Messages"}
-            </Button>
-          </CardFooter>
-        </Card>
-      </div>
+          </div>
+        </div>
+      </main>
+
+      {toast.type && <ToastContainer>
+        <Toast message={toast.message} type={toast.type} />
+      </ToastContainer>}
     </div>
   );
 }
