@@ -1,0 +1,68 @@
+2025-04-15 09:59:22,792 - __main__ - INFO - Parsing contacts from test.csv
+2025-04-15 09:59:22,795 - __main__ - ERROR - Error parsing CSV: CSV must contain 'Contact person' and 'mobile' columns
+2025-04-15 09:59:22,795 - __main__ - ERROR - Error in main execution: CSV must contain 'Contact person' and 'mobile' columns
+2025-04-15 10:00:56,620 - __main__ - INFO - Parsing contacts from test.csv
+2025-04-15 10:00:56,622 - __main__ - ERROR - Error parsing CSV: 'Contact person'
+2025-04-15 10:00:56,623 - __main__ - ERROR - Error in main execution: 'Contact person'
+2025-04-15 10:01:34,742 - __main__ - INFO - Parsing contacts from test.csv
+2025-04-15 10:01:34,744 - __main__ - INFO - Found 5 valid contacts
+2025-04-15 10:01:34,745 - __main__ - INFO - Sample contact: {
+  "name": {
+    "first_name": "Mr.",
+    "last_name": "Shobhit Agarwal"
+  },
+  "phones": [
+    {
+      "phone": "+91 9109286608",
+      "type": "MOBILE"
+    }
+  ]
+}
+2025-04-15 10:01:34,757 - __main__ - INFO - Starting upload of 5 contacts
+2025-04-15 10:01:34,757 - __main__ - INFO - Uploading contact 1/5: Mr.
+2025-04-15 10:01:35,360 - __main__ - ERROR - API request failed: 401 Client Error: Unauthorized for url: https://graph.facebook.com/v22.0/678825985295534/contacts
+2025-04-15 10:01:35,361 - __main__ - ERROR - Failed to upload contact {'name': {'first_name': 'Mr.', 'last_name': 'Shobhit Agarwal'}, 'phones': [{'phone': '+91 9109286608', 'type': 'MOBILE'}]}: 401 Client Error: Unauthorized for url: https://graph.facebook.com/v22.0/678825985295534/contacts
+2025-04-15 10:01:35,363 - __main__ - INFO - Uploading contact 2/5: Mr.
+2025-04-15 10:01:35,667 - __main__ - ERROR - API request failed: 401 Client Error: Unauthorized for url: https://graph.facebook.com/v22.0/678825985295534/contacts
+2025-04-15 10:01:35,668 - __main__ - ERROR - Failed to upload contact {'name': {'first_name': 'Mr.', 'last_name': 'Arnab Banerji'}, 'phones': [{'phone': '+91 9993486608', 'type': 'MOBILE'}]}: 401 Client Error: Unauthorized for url: https://graph.facebook.com/v22.0/678825985295534/contacts
+2025-04-15 10:01:35,668 - __main__ - INFO - Uploading contact 3/5: Mr.
+2025-04-15 10:01:35,981 - __main__ - ERROR - API request failed: 401 Client Error: Unauthorized for url: https://graph.facebook.com/v22.0/678825985295534/contacts
+2025-04-15 10:01:35,982 - __main__ - ERROR - Failed to upload contact {'name': {'first_name': 'Mr.', 'last_name': 'Avinash Nadig'}, 'phones': [{'phone': '+91 9109286608', 'type': 'MOBILE'}]}: 401 Client Error: Unauthorized for url: https://graph.facebook.com/v22.0/678825985295534/contacts
+2025-04-15 10:01:35,983 - __main__ - INFO - Uploading contact 4/5: Harsh
+2025-04-15 10:01:36,305 - __main__ - ERROR - API request failed: 401 Client Error: Unauthorized for url: https://graph.facebook.com/v22.0/678825985295534/contacts
+2025-04-15 10:01:36,307 - __main__ - ERROR - Failed to upload contact {'name': {'first_name': 'Harsh', 'last_name': 'Bhardwaj'}, 'phones': [{'phone': '+91 9109286608', 'type': 'MOBILE'}]}: 401 Client Error: Unauthorized for url: https://graph.facebook.com/v22.0/678825985295534/contacts
+2025-04-15 10:01:36,309 - __main__ - INFO - Uploading contact 5/5: Mr.
+2025-04-15 10:01:37,015 - __main__ - ERROR - API request failed: 401 Client Error: Unauthorized for url: https://graph.facebook.com/v22.0/678825985295534/contacts
+2025-04-15 10:01:37,016 - __main__ - ERROR - Failed to upload contact {'name': {'first_name': 'Mr.', 'last_name': 'SRIKANTH PEDDI'}, 'phones': [{'phone': '+91 9109286608', 'type': 'MOBILE'}]}: 401 Client Error: Unauthorized for url: https://graph.facebook.com/v22.0/678825985295534/contacts
+2025-04-15 10:01:37,018 - __main__ - INFO - Contact upload completed
+2025-04-15 10:03:16,352 - __main__ - INFO - Parsing contacts from test.csv
+2025-04-15 10:03:16,354 - __main__ - INFO - Found 5 valid contacts
+2025-04-15 10:03:16,355 - __main__ - INFO - Sample contact: {
+  "name": {
+    "first_name": "Mr.",
+    "last_name": "Shobhit Agarwal"
+  },
+  "phones": [
+    {
+      "phone": "+91 9109286608",
+      "type": "MOBILE"
+    }
+  ]
+}
+2025-04-15 10:03:16,356 - __main__ - INFO - Starting upload of 5 contacts
+2025-04-15 10:03:16,357 - __main__ - INFO - Uploading contact 1/5: Mr.
+2025-04-15 10:03:16,776 - __main__ - ERROR - API request failed: 400 Client Error: Bad Request for url: https://graph.facebook.com/v22.0/678825985295534/contacts
+2025-04-15 10:03:16,777 - __main__ - ERROR - Failed to upload contact {'name': {'first_name': 'Mr.', 'last_name': 'Shobhit Agarwal'}, 'phones': [{'phone': '+91 9109286608', 'type': 'MOBILE'}]}: 400 Client Error: Bad Request for url: https://graph.facebook.com/v22.0/678825985295534/contacts
+2025-04-15 10:03:16,778 - __main__ - INFO - Uploading contact 2/5: Mr.
+2025-04-15 10:03:17,122 - __main__ - ERROR - API request failed: 400 Client Error: Bad Request for url: https://graph.facebook.com/v22.0/678825985295534/contacts
+2025-04-15 10:03:17,123 - __main__ - ERROR - Failed to upload contact {'name': {'first_name': 'Mr.', 'last_name': 'Arnab Banerji'}, 'phones': [{'phone': '+91 9993486608', 'type': 'MOBILE'}]}: 400 Client Error: Bad Request for url: https://graph.facebook.com/v22.0/678825985295534/contacts
+2025-04-15 10:03:17,126 - __main__ - INFO - Uploading contact 3/5: Mr.
+2025-04-15 10:03:17,451 - __main__ - ERROR - API request failed: 400 Client Error: Bad Request for url: https://graph.facebook.com/v22.0/678825985295534/contacts
+2025-04-15 10:03:17,452 - __main__ - ERROR - Failed to upload contact {'name': {'first_name': 'Mr.', 'last_name': 'Avinash Nadig'}, 'phones': [{'phone': '+91 9109286608', 'type': 'MOBILE'}]}: 400 Client Error: Bad Request for url: https://graph.facebook.com/v22.0/678825985295534/contacts
+2025-04-15 10:03:17,454 - __main__ - INFO - Uploading contact 4/5: Harsh
+2025-04-15 10:03:17,786 - __main__ - ERROR - API request failed: 400 Client Error: Bad Request for url: https://graph.facebook.com/v22.0/678825985295534/contacts
+2025-04-15 10:03:17,787 - __main__ - ERROR - Failed to upload contact {'name': {'first_name': 'Harsh', 'last_name': 'Bhardwaj'}, 'phones': [{'phone': '+91 9109286608', 'type': 'MOBILE'}]}: 400 Client Error: Bad Request for url: https://graph.facebook.com/v22.0/678825985295534/contacts
+2025-04-15 10:03:17,788 - __main__ - INFO - Uploading contact 5/5: Mr.
+2025-04-15 10:03:18,161 - __main__ - ERROR - API request failed: 400 Client Error: Bad Request for url: https://graph.facebook.com/v22.0/678825985295534/contacts
+2025-04-15 10:03:18,167 - __main__ - ERROR - Failed to upload contact {'name': {'first_name': 'Mr.', 'last_name': 'SRIKANTH PEDDI'}, 'phones': [{'phone': '+91 9109286608', 'type': 'MOBILE'}]}: 400 Client Error: Bad Request for url: https://graph.facebook.com/v22.0/678825985295534/contacts
+2025-04-15 10:03:18,191 - __main__ - INFO - Contact upload completed
