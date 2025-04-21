@@ -12,6 +12,16 @@ interface Log {
   type: 'info' | 'success' | 'error' | 'warning';
 }
 
+interface CampaignStatus {
+  fileName: string;
+  status: string;
+  processed?: number;
+  total?: number;
+  successful?: number;
+  failed?: number;
+  successRate?: string;
+}
+
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
   const [logs, setLogs] = useState<Log[]>([]);
@@ -20,6 +30,9 @@ export default function Home() {
     message: '',
     type: null,
   });
+  const [campaignStatus, setCampaignStatus] = useState<CampaignStatus | null>(null);
+  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
+  const [templateName, setTemplateName] = useState<string>("scalixity_marketing_2");
 
   // Add a log entry
   const addLog = (message: string, type: 'info' | 'success' | 'error' | 'warning' = 'info') => {
@@ -55,8 +68,9 @@ export default function Home() {
     try {
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('template_name', templateName);
 
-      const response = await fetch('http://localhost:5000/upload-csv', {
+      const response = await fetch('http://localhost:8000/upload-csv', {
         method: 'POST',
         body: formData,
       });
@@ -70,8 +84,13 @@ export default function Home() {
       addLog(`Campaign started: ${data.message}`, 'success');
       setToast({ message: 'Campaign started successfully', type: 'success' });
       
-      // Poll for results
-      startPollingResults();
+      // Start polling for campaign status
+      startPollingStatus(file.name);
+      
+      setCampaignStatus({
+        fileName: file.name,
+        status: 'processing',
+      });
     } catch (error) {
       console.error('Error:', error);
       addLog(`Error: ${error instanceof Error ? error.message : String(error)}`, 'error');
@@ -81,16 +100,61 @@ export default function Home() {
     }
   };
 
-  // Poll for campaign results
-  const startPollingResults = () => {
-    // In a real implementation, you would poll the backend for results
-    // For now, we'll simulate this with a timeout
+  // Poll for campaign status
+  const startPollingStatus = (fileName: string) => {
+    // Clear any existing polling
+    if (pollingInterval) {
+      clearInterval(pollingInterval);
+    }
+    
     addLog('Checking campaign status...', 'info');
     
-    setTimeout(() => {
-      addLog('Messages are being processed in the background', 'info');
-    }, 3000);
+    // Set up polling
+    const interval = setInterval(async () => {
+      try {
+        const response = await fetch(`http://localhost:8000/campaign-status/${encodeURIComponent(fileName)}`);
+        
+        if (!response.ok) {
+          throw new Error('Failed to fetch campaign status');
+        }
+        
+        const data = await response.json();
+        
+        setCampaignStatus({
+          fileName: fileName,
+          status: data.status,
+          processed: data.processed,
+          total: data.total,
+          successful: data.successful,
+          failed: data.failed,
+          successRate: data.success_rate
+        });
+        
+        // Log status updates
+        if (data.status === 'completed') {
+          addLog(`Campaign completed. Success rate: ${data.success_rate}`, 'success');
+          clearInterval(interval);
+          setPollingInterval(null);
+        } else if (data.processed && data.total) {
+          addLog(`Progress: ${data.processed}/${data.total} contacts processed`, 'info');
+        }
+      } catch (error) {
+        console.error('Error polling campaign status:', error);
+        addLog('Error checking campaign status', 'error');
+      }
+    }, 5000); // Poll every 5 seconds
+    
+    setPollingInterval(interval);
   };
+
+  // Clean up polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+      }
+    };
+  }, [pollingInterval]);
 
   // Clear toast after 3 seconds
   useEffect(() => {
@@ -161,6 +225,20 @@ export default function Home() {
                     </div>
                   )}
 
+                  <div className="mt-4">
+                    <label htmlFor="templateName" className="block text-sm font-medium text-gray-700">
+                      Template Name
+                    </label>
+                    <input
+                      type="text"
+                      id="templateName"
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                      value={templateName}
+                      onChange={(e) => setTemplateName(e.target.value)}
+                      placeholder="Enter WhatsApp template name"
+                    />
+                  </div>
+
                   <div className="mt-6">
                     <Button 
                       onClick={handleSendMessages} 
@@ -201,6 +279,58 @@ export default function Home() {
                   </div>
                 </div>
               </div>
+              
+              {campaignStatus && (
+                <div className="bg-white shadow overflow-hidden rounded-lg mt-6">
+                  <div className="px-4 py-5 sm:p-6">
+                    <h2 className="text-lg font-medium text-gray-900 mb-4">Campaign Status</h2>
+                    <div className="text-sm">
+                      <div className="flex justify-between mb-2">
+                        <span className="text-gray-500">File:</span>
+                        <span className="font-medium">{campaignStatus.fileName}</span>
+                      </div>
+                      <div className="flex justify-between mb-2">
+                        <span className="text-gray-500">Status:</span>
+                        <span className="font-medium">
+                          {campaignStatus.status === 'processing' && (
+                            <span className="text-blue-600">In Progress</span>
+                          )}
+                          {campaignStatus.status === 'completed' && (
+                            <span className="text-green-600">Completed</span>
+                          )}
+                          {campaignStatus.status === 'failed' && (
+                            <span className="text-red-600">Failed</span>
+                          )}
+                        </span>
+                      </div>
+                      {campaignStatus.processed !== undefined && campaignStatus.total !== undefined && (
+                        <div className="flex justify-between mb-2">
+                          <span className="text-gray-500">Progress:</span>
+                          <span className="font-medium">{campaignStatus.processed} / {campaignStatus.total}</span>
+                        </div>
+                      )}
+                      {campaignStatus.successful !== undefined && (
+                        <div className="flex justify-between mb-2">
+                          <span className="text-gray-500">Successful:</span>
+                          <span className="font-medium text-green-600">{campaignStatus.successful}</span>
+                        </div>
+                      )}
+                      {campaignStatus.failed !== undefined && (
+                        <div className="flex justify-between mb-2">
+                          <span className="text-gray-500">Failed:</span>
+                          <span className="font-medium text-red-600">{campaignStatus.failed}</span>
+                        </div>
+                      )}
+                      {campaignStatus.successRate && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Success Rate:</span>
+                          <span className="font-medium">{campaignStatus.successRate}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="md:col-span-2">

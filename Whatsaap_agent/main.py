@@ -2,14 +2,12 @@ import os
 import csv
 import asyncio
 import logging
-from io import StringIO
-from langchain.prompts import ChatPromptTemplate
-from langchain_groq import ChatGroq
-from langchain.chains import LLMChain
-from fastapi import FastAPI, BackgroundTasks, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, BackgroundTasks, UploadFile, File, Form
 import httpx
 import uvicorn
+import shutil
 from fastapi.middleware.cors import CORSMiddleware
+
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -20,18 +18,21 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 # Environment variables
-groq_api_key = os.getenv("GROQ_API_KEY")
-WHATSAPP_API_TOKEN = os.getenv("WHATSAPP_API_TOKEN")
+WHATSAPP_API_TOKEN = os.getenv("ACCESS_TOKEN")
 WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
 WHATSAPP_API_URL = f"https://graph.facebook.com/v22.0/{WHATSAPP_PHONE_NUMBER_ID}/messages"
+print("WHATSAPP_API_TOKEN:", os.getenv("ACCESS_TOKEN"))
+print("WHATSAPP_PHONE_NUMBER_ID:", os.getenv("WHATSAPP_PHONE_NUMBER_ID"))
 
-# Initialize LLM
-llm = ChatGroq(
-    api_key=groq_api_key,
-    model="llama3-70b-8192",
-    temperature=0.7,
-    max_tokens=400
-)
+# Create uploads directory if it doesn't exist
+UPLOAD_DIR = "uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+# Set the delay between messages (in seconds)
+MESSAGE_DELAY = 15
+
+# Campaign status tracking
+campaign_status = {}
 
 # FastAPI app
 app = FastAPI()
@@ -45,30 +46,8 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
-# Marketing message prompt
-MARKETING_PROMPT = """
-You are a professional business development representative for Scalixity. Your task is to craft a personalized marketing message to a potential business lead via WhatsApp.
-
-The message should:
-1. Be brief and to the point (under 100 words)
-2. Start with "Hi, this is Scalixity"
-3. Address the company by name
-4. Briefly mention how our development services might benefit their company based on their sector
-5. Highlight our expertise in software development, website creation, or app development
-6. End with a simple question asking for their interest or a quick call
-
-Here's the information about the contact:
-- Company: {company}
-- Company Profile: {profile}
-- Industry/Sector: {sector}
-
-Scalixity provides software development services specializing in custom applications, websites, mobile apps, and digital transformation. We have a track record of helping businesses improve efficiency and grow through technology solutions.
-
-Write a friendly, professional message that doesn't sound automated.
-"""
-
-async def send_whatsapp_message(phone: str, message: str) -> bool:
-    """Send a text message via WhatsApp Cloud API"""
+async def send_whatsapp_message(phone: str, template_name: str) -> bool:
+    """Send a message via WhatsApp Cloud API using template"""
     headers = {
         "Authorization": f"Bearer {WHATSAPP_API_TOKEN}",
         "Content-Type": "application/json"
@@ -76,17 +55,21 @@ async def send_whatsapp_message(phone: str, message: str) -> bool:
     
     data = {
         "messaging_product": "whatsapp",
-        "recipient_type": "individual",
         "to": phone,
-        "type": "text",
-        "text": {"body": message}
+        "type": "template",
+        "template": {
+            "name": template_name,
+            "language": {
+                "code": "en"
+            }
+        }
     }
     
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(WHATSAPP_API_URL, headers=headers, json=data)
             if response.status_code == 200:
-                logger.info(f"Message sent successfully to {phone}")
+                logger.info(f"Message sent successfully to {phone} using template {template_name}")
                 return True
             else:
                 logger.error(f"Failed to send message: {response.text}")
@@ -95,24 +78,8 @@ async def send_whatsapp_message(phone: str, message: str) -> bool:
         logger.error(f"Error sending WhatsApp message: {str(e)}")
         return False
 
-async def generate_marketing_message(company: str, profile: str, sector: str) -> str:
-    """Generate personalized marketing message"""
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", MARKETING_PROMPT)
-    ])
-    
-    chain = LLMChain(llm=llm, prompt=prompt)
-    
-    result = await chain.arun(
-        company=company,
-        profile=profile,
-        sector=sector
-    )
-    
-    return result.strip()
-
-async def process_csv_content_and_send_messages(csv_content: str) -> dict:
-    """Process contacts from CSV content and send marketing messages"""
+async def process_csv_file_and_send_messages(file_path: str, template_name: str) -> dict:
+    """Process contacts from uploaded CSV and send marketing messages"""
     results = {
         "total": 0,
         "successful": 0,
@@ -120,115 +87,140 @@ async def process_csv_content_and_send_messages(csv_content: str) -> dict:
         "details": []
     }
     
+    # Initialize campaign status
+    file_name = os.path.basename(file_path)
+    campaign_status[file_name] = {
+        "status": "processing",
+        "processed": 0,
+        "total": 0,
+        "successful": 0,
+        "failed": 0
+    }
+    
     try:
-        csv_file = StringIO(csv_content)
-        reader = csv.DictReader(csv_file)
-        
-        for row in reader:
-            results["total"] += 1
+        if not os.path.exists(file_path):
+            logger.error(f"CSV file not found: {file_path}")
+            campaign_status[file_name]["status"] = "failed"
+            return {"error": f"CSV file not found: {file_path}"}
             
-            try:
-                phone = row['Mobile']
-                company = row['Name of the Exhibitor']
-                profile = row['Profile']
-                sector = row['Sector']
+        # First, count total rows
+        with open(file_path, 'r') as csvfile:
+            reader = csv.DictReader(csvfile)
+            campaign_status[file_name]["total"] = sum(1 for _ in reader)
+            
+        # Now process each row
+        with open(file_path, 'r') as csvfile:
+            reader = csv.DictReader(csvfile)
+            for row in reader:
+                results["total"] += 1
                 
-                # Generate marketing message
-                message = await generate_marketing_message(company, profile, sector)
-                
-                # Send message
-                success = await send_whatsapp_message(phone, message)
-                
-                # Record result
-                result_detail = {
-                    "phone": phone,
-                    "company": company,
-                    "success": success,
-                    "message": message if success else "Failed to send"
-                }
-                
-                if success:
-                    results["successful"] += 1
-                else:
-                    results["failed"] += 1
+                try:
+                    # Extract contact information
+                    phone = row['Mobile']
+                    company = row['Name of the Exhibitor']
                     
-                results["details"].append(result_detail)
-                
-                # Small delay to avoid rate limits
-                await asyncio.sleep(1)
-                
-            except Exception as e:
-                logger.error(f"Error processing contact: {str(e)}")
-                results["failed"] += 1
-                results["details"].append({
-                    "phone": row.get('Mobile', 'unknown'),
-                    "company": row.get('Name of the Exhibitor', 'unknown'),
-                    "success": False,
-                    "message": f"Error: {str(e)}"
-                })
+                    # Send template message
+                    success = await send_whatsapp_message(
+                        phone,
+                        template_name
+                    )
+                    
+                    # Record result
+                    result_detail = {
+                        "phone": phone,
+                        "company": company,
+                        "success": success,
+                        "message": f"Template {template_name} sent" if success else "Failed to send"
+                    }
+                    
+                    # Update counts
+                    campaign_status[file_name]["processed"] += 1
+                    
+                    if success:
+                        results["successful"] += 1
+                        campaign_status[file_name]["successful"] += 1
+                    else:
+                        results["failed"] += 1
+                        campaign_status[file_name]["failed"] += 1
+                        
+                    results["details"].append(result_detail)
+                    
+                    # Add delay between messages to avoid rate limits
+                    logger.info(f"Waiting {MESSAGE_DELAY} seconds before sending next message...")
+                    await asyncio.sleep(MESSAGE_DELAY)
+                    
+                except Exception as e:
+                    logger.error(f"Error processing contact: {str(e)}")
+                    results["failed"] += 1
+                    campaign_status[file_name]["failed"] += 1
+                    campaign_status[file_name]["processed"] += 1
+                    results["details"].append({
+                        "phone": row.get('Mobile', 'unknown'),
+                        "company": row.get('Name of the Exhibitor', 'unknown'),
+                        "success": False,
+                        "message": f"Error: {str(e)}"
+                    })
+        
+        # Mark campaign as completed
+        campaign_status[file_name]["status"] = "completed"
     
     except Exception as e:
-        logger.error(f"Error processing CSV content: {str(e)}")
+        logger.error(f"Error reading CSV file: {str(e)}")
+        campaign_status[file_name]["status"] = "failed"
         return {"error": str(e)}
     
     return results
 
 @app.post("/upload-csv")
-async def upload_csv(
-    background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),
-):
-    """
-    Endpoint to upload CSV file and process it for marketing messages
-    """
-    if not file.filename.endswith('.csv'):
-        raise HTTPException(status_code=400, detail="Only CSV files are allowed")
-    
-    # Read file content
-    csv_content = await file.read()
-    
-    # Convert bytes to string
+async def upload_csv(background_tasks: BackgroundTasks, file: UploadFile = File(...), template_name: str = Form("scalixity_marketing_3")):
+    """Upload CSV file and start campaign with specified template"""
     try:
-        csv_text = csv_content.decode('utf-8')
-    except UnicodeDecodeError:
-        # Try with different encoding if UTF-8 fails
-        try:
-            csv_text = csv_content.decode('latin-1')
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Could not decode CSV file: {str(e)}")
+        # Log the template name being used
+        logger.info(f"Received request with template_name: {template_name}")
+        
+        # Create a unique file path
+        file_path = os.path.join(UPLOAD_DIR, file.filename)
+        
+        # Save the file
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        # Start background processing with the provided template name
+        background_tasks.add_task(process_csv_file_and_send_messages, file_path, template_name)
+        
+        return {
+            "message": f"CSV file uploaded and campaign started with template {template_name}",
+            "filename": file.filename,
+            "status": "processing"
+        }
+    except Exception as e:
+        logger.error(f"Error uploading file: {str(e)}")
+        return {"detail": str(e)}
+
+@app.get("/campaign-status/{filename}")
+async def get_campaign_status(filename: str):
+    """Get the status of a campaign by filename"""
+    if filename not in campaign_status:
+        return {
+            "status": "not_found",
+            "message": "Campaign not found"
+        }
     
-    # Process CSV in background
-    background_tasks.add_task(process_csv_content_and_send_messages, csv_text)
+    status_data = campaign_status[filename]
+    
+    # Calculate success rate if there are processed messages
+    success_rate = "0%"
+    if status_data["processed"] > 0:
+        rate = (status_data["successful"] / status_data["processed"]) * 100
+        success_rate = f"{rate:.1f}%"
     
     return {
-        "message": f"CSV file '{file.filename}' uploaded successfully. Marketing messages will be processed in the background.",
-        "status": "processing"
-    }
-
-@app.post("/send-marketing-messages-with-file")
-async def send_marketing_messages_with_file(
-    background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),
-):
-    """Combined endpoint for uploading CSV and sending marketing messages"""
-    return await upload_csv(background_tasks, file)
-
-@app.post("/send-marketing-messages")
-async def send_marketing_messages(background_tasks: BackgroundTasks):
-    """Legacy endpoint for backward compatibility - uses fixed CSV file path"""
-    CSV_FILE_PATH = "test.csv"
-    
-    if not os.path.exists(CSV_FILE_PATH):
-        return {"error": f"CSV file not found: {CSV_FILE_PATH}"}
-    
-    with open(CSV_FILE_PATH, 'r') as csvfile:
-        csv_content = csvfile.read()
-    
-    background_tasks.add_task(process_csv_content_and_send_messages, csv_content)
-    
-    return {
-        "message": "Marketing message campaign started using test.csv (Scalixity personalized messages)",
-        "status": "processing"
+        "status": status_data["status"],
+        "processed": status_data["processed"],
+        "total": status_data["total"],
+        "successful": status_data["successful"],
+        "failed": status_data["failed"],
+        "success_rate": success_rate
     }
 
 @app.get("/test-auth")
@@ -254,10 +246,5 @@ async def test_auth():
     except Exception as e:
         return {"error": str(e)}
 
-@app.get("/campaign-results")
-async def get_campaign_results():
-    """Get results of the most recent marketing campaign"""
-    return {"message": "Result tracking not implemented in this simplified version"}
-
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=5000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
