@@ -2,6 +2,7 @@ import os
 import csv
 import asyncio
 import logging
+import re
 from fastapi import FastAPI, BackgroundTasks, UploadFile, File, Form
 import httpx
 import uvicorn
@@ -21,8 +22,7 @@ logger = logging.getLogger(__name__)
 WHATSAPP_API_TOKEN = os.getenv("ACCESS_TOKEN")
 WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
 WHATSAPP_API_URL = f"https://graph.facebook.com/v22.0/{WHATSAPP_PHONE_NUMBER_ID}/messages"
-print("WHATSAPP_API_TOKEN:", os.getenv("ACCESS_TOKEN"))
-print("WHATSAPP_PHONE_NUMBER_ID:", os.getenv("WHATSAPP_PHONE_NUMBER_ID"))
+
 
 # Create uploads directory if it doesn't exist
 UPLOAD_DIR = "uploads"
@@ -46,8 +46,8 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
-async def send_whatsapp_message(phone: str, template_name: str) -> bool:
-    """Send a message via WhatsApp Cloud API using template"""
+async def send_whatsapp_text_message(phone: str, text_message: str) -> bool:
+    """Send a personalized text message via WhatsApp Cloud API"""
     headers = {
         "Authorization": f"Bearer {WHATSAPP_API_TOKEN}",
         "Content-Type": "application/json"
@@ -56,12 +56,9 @@ async def send_whatsapp_message(phone: str, template_name: str) -> bool:
     data = {
         "messaging_product": "whatsapp",
         "to": phone,
-        "type": "template",
-        "template": {
-            "name": template_name,
-            "language": {
-                "code": "en"
-            }
+        "type": "text",
+        "text": {
+            "body": text_message
         }
     }
     
@@ -69,7 +66,7 @@ async def send_whatsapp_message(phone: str, template_name: str) -> bool:
         async with httpx.AsyncClient() as client:
             response = await client.post(WHATSAPP_API_URL, headers=headers, json=data)
             if response.status_code == 200:
-                logger.info(f"Message sent successfully to {phone} using template {template_name}")
+                logger.info(f"Message sent successfully to {phone}")
                 return True
             else:
                 logger.error(f"Failed to send message: {response.text}")
@@ -78,8 +75,26 @@ async def send_whatsapp_message(phone: str, template_name: str) -> bool:
         logger.error(f"Error sending WhatsApp message: {str(e)}")
         return False
 
-async def process_csv_file_and_send_messages(file_path: str, template_name: str) -> dict:
-    """Process contacts from uploaded CSV and send marketing messages"""
+def personalize_message(template_message: str, contact_data: dict) -> str:
+    """Replace all {{variables}} in the template with values from contact_data"""
+    # Find all variables in the template (pattern: {{variable_name}})
+    variables = re.findall(r'{{([^{}]+)}}', template_message)
+    
+    # Create a personalized message by replacing each variable
+    personalized_message = template_message
+    for var in variables:
+        placeholder = f"{{{{{var}}}}}"
+        if var in contact_data:
+            personalized_message = personalized_message.replace(placeholder, contact_data[var])
+        else:
+            # If the variable is not found in the data, leave it as is or replace with a default value
+            logger.warning(f"Variable {var} not found in contact data for personalization")
+            personalized_message = personalized_message.replace(placeholder, f"[{var}]")
+    
+    return personalized_message
+
+async def process_csv_file_and_send_messages(file_path: str, template_message: str) -> dict:
+    """Process contacts from uploaded CSV and send personalized marketing messages"""
     results = {
         "total": 0,
         "successful": 0,
@@ -115,22 +130,24 @@ async def process_csv_file_and_send_messages(file_path: str, template_name: str)
                 results["total"] += 1
                 
                 try:
-                    # Extract contact information
-                    phone = row['Mobile']
-                    company = row['Name of the Exhibitor']
+                    # Extract phone number
+                    phone = row.get('Mobile', '')
                     
-                    # Send template message
-                    success = await send_whatsapp_message(
-                        phone,
-                        template_name
-                    )
+                    if not phone:
+                        raise ValueError("Mobile number missing or empty")
+                    
+                    # Personalize the message with all available fields from the CSV
+                    personalized_message = personalize_message(template_message, row)
+                    
+                    # Send personalized text message
+                    success = await send_whatsapp_text_message(phone, personalized_message)
                     
                     # Record result
                     result_detail = {
                         "phone": phone,
-                        "company": company,
+                        "company": row.get('Name of the Exhibitor', 'unknown'),
                         "success": success,
-                        "message": f"Template {template_name} sent" if success else "Failed to send"
+                        "message": "Message sent" if success else "Failed to send"
                     }
                     
                     # Update counts
@@ -172,11 +189,31 @@ async def process_csv_file_and_send_messages(file_path: str, template_name: str)
     return results
 
 @app.post("/upload-csv")
-async def upload_csv(background_tasks: BackgroundTasks, file: UploadFile = File(...), template_name: str = Form("scalixity_marketing_3")):
-    """Upload CSV file and start campaign with specified template"""
+async def upload_csv(
+    background_tasks: BackgroundTasks, 
+    file: UploadFile = File(...), 
+    template_message: str = Form(None)
+):
+    """Upload CSV file and start campaign with provided message template"""
+    # Use default template if none provided
+    if not template_message:
+        template_message = """Hi {{name}}, 👋
+Loved discovering {{Name of the Exhibitor}} — you're doing great work in the {{Sector}} space!
+I'm Ashendra, Founder of Scalixity — we build smart, scalable tech for startups:
+✅ CRM systems
+✅ AI chatbots
+✅ E-commerce platforms
+✅ Custom AI/GenAI tools
+All developed in-house — fast, secure, and tailored to your needs.
+Open to a quick 20-min call to explore how we can support {{Name of the Exhibitor}}?
+📅 Book here: https://calendly.com/scalixitydevops/meet
+
+Cheers,
+Ashendra Sharma
++91 8269444130|scalixity.com"""
     try:
-        # Log the template name being used
-        logger.info(f"Received request with template_name: {template_name}")
+        # Log the template message being used
+        logger.info(f"Received request with template message")
         
         # Create a unique file path
         file_path = os.path.join(UPLOAD_DIR, file.filename)
@@ -185,11 +222,11 @@ async def upload_csv(background_tasks: BackgroundTasks, file: UploadFile = File(
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
-        # Start background processing with the provided template name
-        background_tasks.add_task(process_csv_file_and_send_messages, file_path, template_name)
+        # Start background processing with the provided template message
+        background_tasks.add_task(process_csv_file_and_send_messages, file_path, template_message)
         
         return {
-            "message": f"CSV file uploaded and campaign started with template {template_name}",
+            "message": "CSV file uploaded and campaign started with personalized messages",
             "filename": file.filename,
             "status": "processing"
         }

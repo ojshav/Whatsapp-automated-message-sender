@@ -167,6 +167,7 @@ export default function Home() {
   }, [toast]);
 
   return (
+    
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow">
         <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8 flex items-center">
@@ -343,6 +344,12 @@ export default function Home() {
             </div>
           </div>
         </div>
+        <div className="bg-white shadow overflow-hidden rounded-lg">
+  <div className="px-4 py-5 sm:p-6">
+    <h2 className="text-lg font-medium text-gray-900 mb-4">WhatsApp Inbox</h2>
+   
+  </div>
+</div>
       </main>
 
       {toast.type && <ToastContainer>
